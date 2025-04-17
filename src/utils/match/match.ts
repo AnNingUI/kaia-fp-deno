@@ -215,7 +215,7 @@ function createMatcherManagerSync<Input, Output>(): MatcherManagerSync<
 	return api;
 }
 
-export function match<Input, Output>() {
+export function match<Input, Output>(): MatcherManager<Input, Output> {
 	const manager = createMatcherManager<Input, Output>();
 	return manager;
 }
