@@ -35,7 +35,7 @@ export class Options<A> implements HKT<"Options", A> {
 export class Some<A> extends Options<A> implements HKT<"Options", A> {
 	declare readonly _URI: "Options";
 	declare readonly _A: A;
-	override readonly _tag = "Some";
+	override readonly _tag: "Some" = "Some";
 
 	constructor(public override readonly value: A) {
 		super(value);
@@ -45,7 +45,7 @@ export class Some<A> extends Options<A> implements HKT<"Options", A> {
 export class None extends Options<never> implements HKT<"Options", never> {
 	declare readonly _URI: "Options";
 	declare readonly _A: never;
-	override readonly _tag = "None";
+	override readonly _tag: "None" = "None";
 	override readonly value = null;
 
 	private static INSTANCE: None;
