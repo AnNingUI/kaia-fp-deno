@@ -6,7 +6,17 @@ type ShapeRegistry = Record<string, Record<string, Predicate<any>>>;
 const createRegistry = (init?: ShapeRegistry): ShapeRegistry =>
 	init ? structuredClone(init) : {};
 
-function createShapeManager(initial?: ShapeRegistry) {
+function createShapeManager(initial?: ShapeRegistry): {
+	defineShape: {
+		<T>(name: string, shape: Predicate<T>): Predicate<T>;
+		<T>(group: string, name: string, shape: Predicate<T>): Predicate<T>;
+	};
+	getShape: {
+		<T>(name: string): Predicate<T> | undefined;
+		<T>(group: string, name: string): Predicate<T> | undefined;
+	};
+	cloneRegistry: () => ShapeRegistry;
+} {
 	let registry = createRegistry(initial);
 
 	function defineShape<T>(name: string, shape: Predicate<T>): Predicate<T>;
@@ -61,7 +71,17 @@ function createShapeManager(initial?: ShapeRegistry) {
 }
 
 // 默认全局实例（兼容用户旧代码）
-const defaultManager = createShapeManager();
+const defaultManager: {
+	defineShape: {
+		<T>(name: string, shape: Predicate<T>): Predicate<T>;
+		<T>(group: string, name: string, shape: Predicate<T>): Predicate<T>;
+	};
+	getShape: {
+		<T>(name: string): Predicate<T> | undefined;
+		<T>(group: string, name: string): Predicate<T> | undefined;
+	};
+	cloneRegistry: () => ShapeRegistry;
+} = createShapeManager();
 
 // 默认导出接口
 export const defineShape = defaultManager.defineShape;

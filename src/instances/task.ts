@@ -1,5 +1,6 @@
+import type { HKT } from "../core/hkt.ts";
 import { makeMonad } from "../core/utils.ts";
-import { HKT } from "../core/hkt.ts";
+import type { Monad } from "../index.ts";
 
 export class Task<A> implements HKT<"Task", A> {
 	readonly _URI!: "Task";
@@ -20,4 +21,4 @@ export class Task<A> implements HKT<"Task", A> {
 	}
 }
 
-export const TaskMonad = makeMonad("Task", Task, Task.of);
+export const TaskMonad: Monad<"Task"> = makeMonad("Task", Task, Task.of);

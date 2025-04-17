@@ -1,7 +1,8 @@
 // src/instances/asyncResult.ts
-import { HKT } from "../core/hkt.ts";
+import type { HKT } from "../core/hkt.ts";
 import { makeMonad } from "../core/utils.ts";
-import { Either, Left, Right } from "../utils/either.ts";
+import type { Monad } from "../index.ts";
+import { type Either, type Left, Right } from "../utils/either.ts";
 
 export class AsyncResult<E, A> implements HKT<"AsyncResult", A> {
 	readonly _URI!: "AsyncResult";
@@ -37,7 +38,7 @@ export class AsyncResult<E, A> implements HKT<"AsyncResult", A> {
 }
 
 // 修复点3：修正Monad实例类型
-export const AsyncResultMonad = makeMonad(
+export const AsyncResultMonad: Monad<"AsyncResult"> = makeMonad(
 	"AsyncResult",
 	AsyncResult,
 	AsyncResult.of

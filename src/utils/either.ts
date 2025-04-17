@@ -1,7 +1,7 @@
 export type Either<L, R> = Left<L> | Right<R>;
 
 export class EitherBase {
-	static is(v: any) {
+	static is(v: unknown): v is Either<unknown, unknown> {
 		return v instanceof Left || v instanceof Right;
 	}
 }
@@ -27,11 +27,13 @@ export class Right<R> extends EitherBase {
 		super();
 	}
 
-	public get() {
+	public get(): R {
 		return this.value;
 	}
 
-	public to<B>(t: (v: R) => B | Promise<B> | void | Promise<void>) {
+	public to<B>(
+		t: (v: R) => B | Promise<B> | void | Promise<void>
+	): B | Promise<B> | void | Promise<void> {
 		return t(this.value);
 	}
 

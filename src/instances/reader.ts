@@ -1,5 +1,6 @@
-import { HKT } from "../core/hkt.ts";
+import type { HKT } from "../core/hkt.ts";
 import { makeMonad } from "../core/utils.ts";
+import type { Monad } from "../index.ts";
 
 export class Reader<R, A> implements HKT<"Reader", A> {
 	readonly _URI!: "Reader";
@@ -28,7 +29,11 @@ export class Reader<R, A> implements HKT<"Reader", A> {
 	}
 }
 
-export const ReaderMonad = makeMonad("Reader", Reader, Reader.of, (fab, fa) =>
-	// deno-lint-ignore no-explicit-any
-	fa.ap(fab as any)
+export const ReaderMonad: Monad<"Reader"> = makeMonad(
+	"Reader",
+	Reader,
+	Reader.of,
+	(fab, fa) =>
+		// deno-lint-ignore no-explicit-any
+		fa.ap(fab as any)
 );

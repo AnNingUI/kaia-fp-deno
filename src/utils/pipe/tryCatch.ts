@@ -75,7 +75,34 @@ export function tryCatch<T extends any[], R, E, H = E>(
 	}) as TryCatchReturn<T, R, H>; // 添加外层类型断言
 }
 
-export const Result = {
+type ResultFuns = {
+	unwrap<T, E>(res: Result<T, E>): T;
+	map<T, E, U>(res: Result<T, E>, fn: (val: T) => U): Result<U, E>;
+	mapError<T, E, F>(res: Result<T, E>, fn: (err: E) => F): Result<T, F>;
+	flatMap<T, E, U>(
+		res: Result<T, E>,
+		fn: (val: T) => Result<U, E>
+	): Result<U, E>;
+	flatMapAsync<T, E, U>(
+		res: Result<T, E>,
+		fn: (val: T) => Promise<Result<U, E>>
+	): Promise<Result<U, E>>;
+	fromPromise<T, E>(
+		p: Promise<T>,
+		onError?: (e: any) => E
+	): Promise<Result<T, E>>;
+	all<T, E>(arr: Promise<Result<T, E>>[]): Promise<Result<T[], E>>;
+	allSettled<T, E>(arr: Promise<Result<T, E>>[]): Promise<Result<T, E>[]>;
+	any<T, E>(arr: Promise<Result<T, E>>[]): Promise<Result<T, E>>;
+	combine<R extends Record<string, Result<any, any>>>(
+		obj: R
+	): Result<
+		{ [K in keyof R]: R[K] extends Result<infer T, any> ? T : never },
+		R[keyof R] extends Result<any, infer E> ? E : never
+	>;
+};
+
+export const Result: ResultFuns = {
 	unwrap<T, E>(res: Result<T, E>): T {
 		if (res.success) return res.ok;
 		throw res.err;

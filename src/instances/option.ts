@@ -1,5 +1,5 @@
-import { HKT } from "../core/hkt.ts";
-import { Monad } from "../core/typeClass.ts";
+import type { HKT } from "../core/hkt.ts";
+import type { Monad } from "../core/typeClass.ts";
 
 export class Options<A> implements HKT<"Options", A> {
 	readonly _URI!: "Options";
@@ -8,11 +8,11 @@ export class Options<A> implements HKT<"Options", A> {
 
 	constructor(public readonly value: A | null) {}
 
-	public isNone() {
+	public isNone(): this is None {
 		return this.value === null && this instanceof None && this._tag === "None";
 	}
 
-	public isSome() {
+	public isSome(): this is Some<A> {
 		return this.value !== null && this instanceof Some && this._tag === "Some";
 	}
 
@@ -20,7 +20,7 @@ export class Options<A> implements HKT<"Options", A> {
 		return this.isNone() ? new Some(value) : this;
 	}
 
-	public get() {
+	public get(): A | never {
 		if (this.value === null) {
 			throw new Error("Option.get called on None");
 		}

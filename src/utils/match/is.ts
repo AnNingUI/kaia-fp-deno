@@ -139,13 +139,17 @@ const isShape = <T extends Record<string, Predicate<any>>>(
 
 	return fn;
 };
-const isTuple = <T extends Predicate<any>[]>(elements: [...T]) => {
+const isTuple = <T extends Predicate<any>[]>(
+	elements: [...T]
+): ((val: any) => val is TupleType<T>) => {
 	return (val: any): val is TupleType<T> =>
 		Array.isArray(val) &&
 		val.length === elements.length &&
 		elements.every((p, i) => p(val[i]));
 };
-const isUnion = <U extends Predicate<any>[]>(...variants: [...U]) => {
+const isUnion = <U extends Predicate<any>[]>(
+	...variants: [...U]
+): ((val: any) => val is U[number] extends Predicate<infer T> ? T : never) => {
 	return (val: any): val is U[number] extends Predicate<infer T> ? T : never =>
 		variants.some((fn) => fn(val));
 };
@@ -164,7 +168,21 @@ const isLiteral = <T extends string | number | boolean | null | undefined>(
 
 	return predicate;
 };
-const isEither = <L, R>() => {
+
+type IsEither<L, R> = {
+	shape: (
+		leftPred: ReturnType<typeof wrap<L>>,
+		rightPred: ReturnType<typeof wrap<R>>
+	) => ReturnType<typeof wrap<Either<L, R>>>;
+
+	left: (pred: ReturnType<typeof wrap<L>>) => ReturnType<typeof wrap<Left<L>>>;
+
+	right: (
+		pred: ReturnType<typeof wrap<R>>
+	) => ReturnType<typeof wrap<Right<R>>>;
+};
+
+const isEither = <L, R>(): IsEither<L, R> => {
 	return {
 		shape: (
 			leftPred: ReturnType<typeof wrap<L>>,
@@ -199,14 +217,19 @@ const isEither = <L, R>() => {
 	};
 };
 
-const isClazz = <T>(ctor: { new (...args: any[]): T }) => {
+type IsClazz<T> = {
+	match: Predicate<T>;
+	(val: unknown): val is T;
+};
+
+const isClazz = <T>(ctor: { new (...args: any[]): T }): IsClazz<T> => {
 	const u = (val: unknown): val is T => val instanceof ctor;
 	u.match = u;
 	return u;
 };
 
 // boolean 布尔匹配 转 is
-const isTo = <T>(to: (v: T) => boolean) => {
+const isTo = <T>(to: (v: T) => boolean): ((val: unknown) => val is T) => {
 	const u = (val: unknown): val is T => to(val as T);
 	return u;
 };

@@ -1,5 +1,6 @@
+import type { HKT } from "../core/hkt.ts";
 import { makeMonad } from "../core/utils.ts";
-import { HKT } from "../core/hkt.ts";
+import type { Monad } from "../index.ts";
 
 export class State<S, A> implements HKT<"State", A> {
 	readonly _URI!: "State";
@@ -26,4 +27,4 @@ export class State<S, A> implements HKT<"State", A> {
 	}
 }
 
-export const StateMonad = makeMonad("State", State, State.of);
+export const StateMonad: Monad<"State"> = makeMonad("State", State, State.of);
