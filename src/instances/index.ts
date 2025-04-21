@@ -1,5 +1,6 @@
 export * from "./asyncResult.ts";
 export * from "./io.ts";
+export * from "./lazyArray.ts";
 export * from "./option.ts";
 export * from "./reader.ts";
 export * from "./state.ts";
