@@ -30,6 +30,14 @@ export class Options<A> implements HKT<"Options", A> {
 	public getOrElse<B>(defaultValue: B): A | B {
 		return this.isSome() ? (this.value as A) : defaultValue;
 	}
+
+	public match<B>({ some, none }: { some: (value: A) => B; none: () => B }): B {
+		if (this.isSome()) {
+			return some?.(this.value!);
+		} else {
+			return none?.();
+		}
+	}
 }
 
 export class Some<A> extends Options<A> implements HKT<"Options", A> {

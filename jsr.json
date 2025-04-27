@@ -1,6 +1,6 @@
 {
 	"name": "@anning/kaia-fp",
-	"version": "1.0.3-alpha",
+	"version": "1.0.3",
 	"license": "MIT",
 	"exports": "./mod.ts"
 }
