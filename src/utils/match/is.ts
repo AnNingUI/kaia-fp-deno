@@ -39,11 +39,29 @@ function compose<T>(preds: ((val: any) => boolean)[]): Predicate<T> {
 	return (val): val is T => preds.every((p) => p(val));
 }
 
+type IsNumberNoMatch = Omit<IsNumberSelf, "match">;
+type IsNumberNoNaN = Omit<IsNumberSelf, "nan">;
 type IsNumberSelf = {
-	toBool(to: (n: number) => boolean): IsNumberSelf;
-	gt(n: number): IsNumberSelf;
-	lt(n: number): IsNumberSelf;
-	eq(n: number): IsNumberSelf;
+	toBool(to: (n: number) => boolean): IsNumberNoNaN;
+	// >
+	gt(n: number): IsNumberNoNaN;
+	// >=
+	gte(n: number): IsNumberNoNaN;
+	// s <= n <= e
+	inRange(s: number, e: number): IsNumberNoNaN;
+	// <
+	lt(n: number): IsNumberNoNaN;
+	// <=
+	lte(n: number): IsNumberNoNaN;
+	// ===
+	eq(n: number): IsNumberNoNaN & {
+		or(n: number): IsNumberNoNaN;
+	};
+	even(): Omit<IsNumberNoNaN, "odd" | "even">;
+	odd(): Omit<IsNumberNoNaN, "even" | "odd">;
+	positive(): Omit<IsNumberNoNaN, "negative" | "positive">;
+	negative(): Omit<IsNumberNoNaN, "positive" | "negative">;
+	nan(): Omit<IsNumberSelf, keyof IsNumberNoMatch>;
 	match: Predicate<number>;
 };
 const isNumber = (): IsNumberSelf => {
@@ -58,13 +76,54 @@ const isNumber = (): IsNumberSelf => {
 			preds.push((v) => v > n);
 			return self;
 		},
+		gte(n: number) {
+			preds.push((v) => v >= n);
+			return self;
+		},
+		inRange(s: number, e: number) {
+			preds.push((v) => v >= s && v <= e);
+			return self;
+		},
 		lt(n: number) {
 			preds.push((v) => v < n);
 			return self;
 		},
-		eq(n: number) {
-			preds.push((v) => v === n);
+		lte(n: number) {
+			preds.push((v) => v <= n);
 			return self;
+		},
+		eq(n: number) {
+			const i = (v: number) => v === n;
+			const len = preds.push(i);
+			return {
+				...self,
+				or: (n: number) => {
+					preds[len - 1] = (v) => v === n || i(v);
+					return self;
+				},
+			};
+		},
+		even() {
+			preds.push((v) => v % 2 === 0);
+			return self;
+		},
+		odd() {
+			preds.push((v) => v % 2 !== 0);
+			return self;
+		},
+		positive() {
+			preds.push((v) => v > 0);
+			return self;
+		},
+		negative() {
+			preds.push((v) => v < 0);
+			return self;
+		},
+		nan() {
+			preds.push((v) => Number.isNaN(v));
+			return {
+				match: self.match,
+			};
 		},
 		match: compose<number>(preds),
 	};
@@ -75,6 +134,10 @@ type IsStringSelf = {
 	toBool(to: (n: string) => boolean): IsStringSelf;
 	test(r: RegExp): IsStringSelf;
 	includes(substr: string): IsStringSelf;
+	startsWith(startStr: string, position?: number): IsStringSelf;
+	endsWith(endStr: string, position?: number): IsStringSelf;
+	length(n: number): IsStringSelf;
+	empty(): IsStringSelf;
 	match: Predicate<string>;
 };
 
@@ -91,6 +154,22 @@ const isString = (): IsStringSelf => {
 		},
 		includes(substr: string) {
 			preds.push((v) => v.includes(substr));
+			return self;
+		},
+		startsWith(startStr: string, position?: number) {
+			preds.push((v: string) => v.startsWith(startStr, position));
+			return self;
+		},
+		endsWith(endStr: string, position?: number) {
+			preds.push((v: string) => v.endsWith(endStr, position));
+			return self;
+		},
+		length(n: number) {
+			preds.push((v) => v.length === n);
+			return self;
+		},
+		empty() {
+			preds.push((v) => v.length === 0);
 			return self;
 		},
 		match: compose<string>(preds),
@@ -117,9 +196,18 @@ const isBigint =
 	(val): val is bigint =>
 		typeof val === "bigint";
 
+interface IsShape<T> extends WithInfer<T> {
+	extends<S>(other: WithInfer<S>): IsShape<T & S>;
+}
+function mergeShapes<
+	T extends Record<string, Predicate<any>>,
+	S extends Record<string, Predicate<any>>
+>(a: T, b: S): Record<string, Predicate<any>> {
+	return { ...a, ...b };
+}
 const isShape = <T extends Record<string, Predicate<any>>>(
 	shape: T
-): WithInfer<{
+): IsShape<{
 	[K in keyof T]: T[K] extends Predicate<infer U> ? U : never;
 }> => {
 	type Inferred = {
@@ -132,10 +220,19 @@ const isShape = <T extends Record<string, Predicate<any>>>(
 			if (!shape[key]((val as any)[key])) return false;
 		}
 		return true;
-	}) as WithInfer<Inferred>;
+	}) as IsShape<Inferred>;
 
 	// @ts-expect-error only for static type extraction
 	fn.inter = undefined;
+
+	fn.extends = <S>(other: WithInfer<S>) => {
+		const otherShape = (other as any)._shape || {};
+		const mergedShape = mergeShapes(otherShape, shape);
+		return isShape(mergedShape) as IsShape<Inferred & S>;
+	};
+
+	// 添加 _shape 属性用于运行时提取原始 shape（可选）
+	(fn as any)._shape = shape;
 
 	return fn;
 };

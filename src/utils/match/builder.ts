@@ -4,7 +4,7 @@ import { Predicate } from "./is.ts";
 type ShapeRegistry = Record<string, Record<string, Predicate<any>>>;
 
 const createRegistry = (init?: ShapeRegistry): ShapeRegistry =>
-	init ? structuredClone(init) : {};
+	init ? { ...init } : {};
 
 function createShapeManager(initial?: ShapeRegistry): {
 	defineShape: {

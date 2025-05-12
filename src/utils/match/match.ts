@@ -3,23 +3,28 @@ import { type Either, Left, Right } from "../either.ts";
 import { is } from "./is.ts";
 type AsyncOrSync<T> = T | Promise<T>;
 type MatchHandler<T, R> = (val: T) => AsyncOrSync<R>;
+type MatchHandOrValue<T, R> = MatchHandler<T, R> | R;
 type Condition<T> = (val: unknown) => val is T;
 
 type Callback<Output> = (value: Output, index: number) => void;
+
+const valueToFunc = <R, T>(v: MatchHandOrValue<R, T>): MatchHandler<R, T> => {
+	return (typeof v === "function" ? v : () => v) as MatchHandler<R, T>;
+};
 
 interface MatcherManager<Input, Output> {
 	cases: Map<Condition<any>, MatchHandler<any, Output>>;
 	fallbackHandler: MatchHandler<Input, Output> | null;
 	with<T = Input>(
 		cond: Condition<T>,
-		handler: MatchHandler<T, Output>
+		handler: MatchHandOrValue<T, Output>
 	): MatcherManager<Input, Output>;
 	with2(
-		to: (v: Input) => boolean,
-		handler: MatchHandler<Input, Output>
+		to: ((v: Input) => boolean) | Input,
+		handler: MatchHandOrValue<Input, Output>
 	): MatcherManager<Input, Output>;
 	otherwise(
-		handler: MatchHandler<Input, Output>
+		handler: MatchHandOrValue<Input, Output>
 	): MatcherManager<Input, Output>;
 	run: (value: Input) => Promise<Output>;
 	forEach: (
@@ -34,14 +39,14 @@ interface MatcherManagerSync<Input, Output> {
 	fallbackHandler: MatchHandler<Input, Output> | null;
 	with<T = Input>(
 		cond: Condition<T>,
-		handler: MatchHandler<T, Output>
+		handler: MatchHandOrValue<T, Output>
 	): MatcherManagerSync<Input, Output>;
 	with2(
-		to: (v: Input) => boolean,
-		handler: MatchHandler<Input, Output>
+		to: ((v: Input) => boolean) | Input,
+		handler: MatchHandOrValue<Input, Output>
 	): MatcherManagerSync<Input, Output>;
 	otherwise(
-		handler: MatchHandler<Input, Output>
+		handler: MatchHandOrValue<Input, Output>
 	): MatcherManagerSync<Input, Output>;
 	unwrap: (value: Input) => Either<null, Right<Output> | Right<undefined>>;
 	run: (value: Input) => Either<Error, Output>;
@@ -105,17 +110,24 @@ function createMatcherManager<Input, Output>(): MatcherManager<Input, Output> {
 	const api: MatcherManager<Input, Output> = {
 		cases,
 		fallbackHandler,
-		with<T>(cond: Condition<T>, handler: MatchHandler<T, Output>) {
-			cases.set(cond, handler);
+		with<T>(cond: Condition<T>, handler: MatchHandOrValue<T, Output>) {
+			cases.set(cond, valueToFunc(handler));
 			return api;
 		},
-		with2(to: (v: Input) => boolean, handler: MatchHandler<Input, Output>) {
-			const is2 = is.to(to);
-			cases.set(is2, handler);
+		with2(
+			to: ((v: Input) => boolean) | Input,
+			handler: MatchHandOrValue<Input, Output>
+		) {
+			const t =
+				typeof to === "function"
+					? (to as (v: Input) => boolean)
+					: (v: Input) => v === to;
+			const is2 = is.to(t);
+			cases.set(is2, valueToFunc(handler));
 			return api;
 		},
-		otherwise(handler: MatchHandler<Input, Output>) {
-			fallbackHandler = handler;
+		otherwise(handler: MatchHandOrValue<Input, Output>) {
+			fallbackHandler = valueToFunc(handler);
 			return api;
 		},
 		run: runner,
@@ -180,17 +192,24 @@ function createMatcherManagerSync<Input, Output>(): MatcherManagerSync<
 	const api: MatcherManagerSync<Input, Output> = {
 		cases,
 		fallbackHandler,
-		with<T>(cond: Condition<T>, handler: MatchHandler<T, Output>) {
-			cases.set(cond, handler);
+		with<T>(cond: Condition<T>, handler: MatchHandOrValue<T, Output>) {
+			cases.set(cond, valueToFunc(handler));
 			return api;
 		},
-		with2(to: (v: Input) => boolean, handler: MatchHandler<Input, Output>) {
-			const is2 = is.to(to);
-			cases.set(is2, handler);
+		with2(
+			to: ((v: Input) => boolean) | Input,
+			handler: MatchHandOrValue<Input, Output>
+		) {
+			const t =
+				typeof to === "function"
+					? (to as (v: Input) => boolean)
+					: (v: Input) => v === to;
+			const is2 = is.to(t);
+			cases.set(is2, valueToFunc<Input, Output>(handler));
 			return api;
 		},
-		otherwise(handler: MatchHandler<Input, Output>) {
-			fallbackHandler = handler;
+		otherwise(handler: MatchHandOrValue<Input, Output>) {
+			fallbackHandler = valueToFunc(handler);
 			return api;
 		},
 		unwrap: (value: Input): Either<null, Right<Output> | Right<undefined>> => {
