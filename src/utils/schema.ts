@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 export type JSONSchema = {
 	type?: string;
 	properties?: Record<string, JSONSchema>;
