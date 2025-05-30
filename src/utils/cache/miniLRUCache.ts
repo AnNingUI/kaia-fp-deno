@@ -1,41 +1,11 @@
-// deno-lint-ignore-file
-type Node<K, V> = {
-	key: K;
-	value: V;
-	prev: Node<K, V> | null;
-	next: Node<K, V> | null;
-	createdAt: number;
-};
+// MiniLRUCache.ts
+import { type Node, NodePool } from "./NodeManager.ts";
+import { LRUCacheWorker } from "./lruCache.worker.ts";
 
-class NodePool<K, V> {
-	private pool: Node<K, V>[] = [];
-
-	acquire(key: K, value: V, createdAt: number): Node<K, V> {
-		const node = this.pool.pop();
-		if (node) {
-			node.key = key;
-			node.value = value;
-			node.prev = null;
-			node.next = null;
-			node.createdAt = createdAt;
-			return node;
-		}
-		return { key, value, prev: null, next: null, createdAt };
-	}
-
-	release(node: Node<K, V>) {
-		// 清理以避免意外引用泄露
-		node.key = null as any;
-		node.value = null as any;
-		node.prev = null;
-		node.next = null;
-		node.createdAt = 0;
-		this.pool.push(node);
-	}
-
-	clear() {
-		this.pool.length = 0;
-	}
+interface CacheOptions {
+	ttl?: number; // 毫秒，0 表示不启用
+	autoSweep?: boolean; // 是否自动定时清理
+	sweepInterval?: number; // 自动清理间隔，默认60000ms
 }
 
 export class MiniLRUCache<K, V> {
@@ -48,20 +18,28 @@ export class MiniLRUCache<K, V> {
 	private misses = 0;
 
 	private readonly nodePool = new NodePool<K, V>();
+	private readonly ttl: number;
+	private readonly sweepWorker?: LRUCacheWorker<K, V>;
 
-	constructor(
-		private readonly max: number,
-		private readonly ttl: number = 0 // 0 表示不启用 TTL
-	) {}
+	constructor(private readonly max: number, options: CacheOptions = {}) {
+		this.ttl = options.ttl ?? 0;
 
-	get(key: K): V | undefined {
+		if (this.ttl > 0 && options.autoSweep) {
+			this.sweepWorker = new LRUCacheWorker(
+				this,
+				options.sweepInterval ?? 60000
+			);
+			this.sweepWorker.start();
+		}
+	}
+
+	get(key: K, now = Date.now()): V | undefined {
 		const node = this.map.get(key);
 		if (!node) {
 			this.misses++;
 			return undefined;
 		}
 
-		const now = Date.now();
 		if (this.ttl > 0 && now - node.createdAt > this.ttl) {
 			this.removeInternal(node);
 			this.misses++;
@@ -73,8 +51,7 @@ export class MiniLRUCache<K, V> {
 		return node.value;
 	}
 
-	set(key: K, value: V): void {
-		const now = Date.now();
+	set(key: K, value: V, now = Date.now()): void {
 		const existing = this.map.get(key);
 
 		if (existing) {
@@ -96,11 +73,10 @@ export class MiniLRUCache<K, V> {
 		if (node) this.removeInternal(node);
 	}
 
-	has(key: K): boolean {
+	has(key: K, now = Date.now()): boolean {
 		const node = this.map.get(key);
 		if (!node) return false;
 
-		const now = Date.now();
 		if (this.ttl > 0 && now - node.createdAt > this.ttl) {
 			this.removeInternal(node);
 			return false;
@@ -115,11 +91,31 @@ export class MiniLRUCache<K, V> {
 		this.head = this.tail = null;
 		this.size = this.hits = this.misses = 0;
 		this.nodePool.clear();
+
+		if (this.sweepWorker) {
+			this.sweepWorker.stop(); // 停止 Web Worker
+		}
 	}
 
 	get hitRate(): number {
 		const total = this.hits + this.misses;
 		return total === 0 ? 0 : this.hits / total;
+	}
+
+	/** 主动清理过期节点 */
+	sweepExpired(now = Date.now()): void {
+		if (this.ttl <= 0) return;
+
+		let node = this.tail;
+		while (node) {
+			const prev = node.prev;
+			if (now - node.createdAt > this.ttl) {
+				this.removeInternal(node);
+			} else {
+				break; // 因为是 LRU，越往头部越新，遇到第一个没过期就停止
+			}
+			node = prev;
+		}
 	}
 
 	private removeInternal(node: Node<K, V>) {
@@ -130,15 +126,18 @@ export class MiniLRUCache<K, V> {
 	}
 
 	private moveToFront(node: Node<K, V>): void {
-		const { prev, next } = node;
-		if (prev) prev.next = next;
-		if (next) next.prev = prev;
-		if (node === this.tail) this.tail = prev;
+		if (node === this.head) return;
 
+		// 断开 node 链接
+		this.removeNode(node);
+
+		// 插入到头部
 		node.prev = null;
 		node.next = this.head;
 		if (this.head) this.head.prev = node;
 		this.head = node;
+
+		if (!this.tail) this.tail = node;
 	}
 
 	private addToFront(node: Node<K, V>): void {
@@ -155,6 +154,8 @@ export class MiniLRUCache<K, V> {
 		if (next) next.prev = prev;
 		if (node === this.head) this.head = next;
 		if (node === this.tail) this.tail = prev;
+		node.prev = null;
+		node.next = null;
 	}
 
 	private evictLRU(): void {

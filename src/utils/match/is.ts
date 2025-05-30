@@ -131,7 +131,14 @@ const isNumber = (): IsNumberSelf => {
 };
 
 type IsStringSelf = {
-	toBool(to: (n: string) => boolean): IsStringSelf;
+	toBool(
+		to:
+			| ((n: string) => boolean)
+			| {
+					turer: string[];
+					falser: string[];
+			  }
+	): IsStringSelf;
 	test(r: RegExp): IsStringSelf;
 	includes(substr: string): IsStringSelf;
 	startsWith(startStr: string, position?: number): IsStringSelf;
@@ -144,8 +151,23 @@ type IsStringSelf = {
 const isString = (): IsStringSelf => {
 	const preds: ((v: any) => boolean)[] = [(v) => typeof v === "string"];
 	const self = {
-		toBool(to: (n: string) => boolean) {
-			preds.push((v) => to(v));
+		toBool(
+			to:
+				| ((n: string) => boolean)
+				| {
+						turer: string[];
+						falser: string[];
+				  }
+		) {
+			preds.push((v: string) => {
+				if (typeof to === "function") {
+					return to(v);
+				} else {
+					const turer = to.turer;
+					const falser = to.falser;
+					return turer.includes(v) && !falser.includes(v);
+				}
+			});
 			return self;
 		},
 		test(r: RegExp) {
@@ -365,3 +387,11 @@ export const is: IsTypes = {
 	not,
 	optional,
 };
+
+export type CreateTypeOf<F extends (...args: any[]) => any> = F extends (
+	...args: any[]
+) => infer R
+	? R extends Predicate<infer T>
+		? T
+		: never
+	: never;

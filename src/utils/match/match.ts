@@ -1,7 +1,7 @@
 // deno-lint-ignore-file
+import { MiniLRUCache } from "../cache/miniLRUCache.ts";
 import { type Either, Left, Right } from "../either.ts";
 import { is } from "./is.ts";
-import { MiniLRUCache } from "./miniLRUCache.ts";
 type AsyncOrSync<T> = T | Promise<T>;
 type MatchHandler<T, R> = (val: T) => AsyncOrSync<R>;
 type MatchHandOrValue<T, R> = MatchHandler<T, R> | R;
@@ -250,6 +250,8 @@ type LRUOptions =
 			useLRU: true;
 			maxSize: number;
 			maxAge: number;
+			autoSweep?: boolean;
+			sweepInterval?: number;
 	  }
 	| {
 			useLRU: false;
@@ -257,6 +259,14 @@ type LRUOptions =
 			maxAge?: number;
 	  };
 
+type MatcherSyncBuilder<A, B> = (
+	self: (value: A) => B,
+	matcher: MatcherManagerSync<A, B>
+) => MatcherManagerSync<A, B>;
+export type MatcherBuilder<A, B> = (
+	self: (value: A) => Promise<B>,
+	matcher: MatcherManager<A, B>
+) => MatcherManager<A, B>;
 /**
  * This function is suitable for the fib function will be similar to the iterative evaluation of the value of the scenario,
  * the use of caching can be avoided to repeat the calculation.
@@ -283,49 +293,136 @@ type LRUOptions =
  *	);
  */
 export function matchSyncMemo<Input, Output>(
-	builder: (
-		self: (value: Input) => Output,
-		matcher: MatcherManagerSync<Input, Output>
-	) => MatcherManagerSync<Input, Output>,
+	builder: MatcherSyncBuilder<Input, Output>,
 	options: LRUOptions = { useLRU: false, maxSize: 1000, maxAge: 1000 * 60 * 5 }
 ): (value: Input) => Output {
 	let fn!: (value: Input) => Output;
 
-	// simple Map-based cache
+	// Pre-construct matcher to avoid rebuilding on each call
+	const matcher = builder((v: Input) => fn(v), matchSync<Input, Output>());
+
 	const cache = options.useLRU
 		? new Map<Input, Output>()
-		: new MiniLRUCache<Input, Output>(options.maxSize!, options.maxAge!);
-	const weakCache = new WeakMap<any, Output>();
+		: new MiniLRUCache<Input, Output>(options.maxSize!, {
+				ttl: options.maxAge ?? 0,
+		  });
+	const weakCache = new WeakMap<object, Output>();
 
-	// now define fn for real
 	fn = (value: Input): Output => {
-		// 1) check cache
-		if (typeof value === "object") {
-			if (weakCache.has(value)) {
-				return weakCache.get(value) as Output;
-			}
-		} else if (cache.has(value)) {
-			return cache.get(value) as Output;
-		}
+		const isObject = typeof value === "object" && value !== null;
 
-		// 2) run the matcher
-		const result = builder((v: Input) => fn(v), matchSync<Input, Output>()).run(
-			value
-		);
-
-		// 3) error‐check
-		if (result instanceof Left) {
-			throw result.value;
-		}
-
-		// 4) cache & return
-		const out = (result as Right<Output>).value;
-		if (typeof value === "object") {
-			weakCache.set(value, out);
+		// 1) Check cache
+		if (isObject) {
+			const cached = weakCache.get(value as object);
+			if (cached !== undefined) return cached;
 		} else {
-			cache.set(value, out);
+			const cached = cache.get(value);
+			if (cached !== undefined) return cached;
 		}
-		return out;
+
+		// 2) Run matcher only once
+		const result = matcher.run(value);
+
+		// 3) Handle error or extract result
+		if (result.isLeft()) throw result.value;
+		const output = (result as Right<Output>).value;
+
+		// 4) Cache result
+		if (isObject) {
+			weakCache.set(value as object, output);
+		} else {
+			cache.set(value, output);
+		}
+
+		return output;
+	};
+
+	return fn;
+}
+
+/**
+ * Add memoization to async match (concurrency-friendly version)
+ * @template Input, Output
+ * @param builder A constructor function that takes (self, matcher) => matcher, where self is used for recursive calls
+ * @param options Caching strategy. When useLRU is true, uses Map; otherwise uses MiniLRUCache
+ * @returns A function of type (value: Input) => Promise<Output> with built-in concurrent deduplication and caching
+ */
+export function matchAsyncMemo<Input, Output>(
+	builder: MatcherBuilder<Input, Output>,
+	options: LRUOptions = { useLRU: false, maxSize: 1000, maxAge: 1000 * 60 * 5 }
+): (value: Input) => Promise<Output> {
+	// 先声明 fn，让 builder 能够在内部递归调用
+	let fn!: (value: Input) => Promise<Output>;
+
+	// 构造一个异步 matcher（基于 match()）
+	const matcher = builder((v: Input) => fn(v), match<Input, Output>());
+
+	// 根据选项来决定缓存容器
+	// 如果 useLRU = true，则直接用 Map<Input, Promise<Output>>
+	// 否则用 MiniLRUCache<Input, Promise<Output>>，并指定 ttl 为 maxAge
+	const cache = options.useLRU
+		? new Map<Input, Promise<Output>>()
+		: new MiniLRUCache<Input, Promise<Output>>(options.maxSize!, {
+				ttl: options.maxAge ?? 0,
+		  });
+
+	// 对象类型单独缓存到弱引用中，自动在对象不可达时被回收
+	const weakCache = new WeakMap<object, Promise<Output>>();
+
+	fn = async (value: Input): Promise<Output> => {
+		const isObject = typeof value === "object" && value !== null;
+		// 先看缓存里有没有“正在进行”或已经完成的 Promise
+		if (isObject) {
+			const existing = weakCache.get(value as object);
+			if (existing) {
+				return existing;
+			}
+		} else {
+			const existing = options.useLRU
+				? (cache as Map<Input, Promise<Output>>).get(value)
+				: (cache as MiniLRUCache<Input, Promise<Output>>).get(value);
+			if (existing) {
+				return existing;
+			}
+		}
+
+		// 如果没有，就新建一个 Promise，放入缓存，然后执行 matcher.run
+		const rawPromise = (async () => {
+			// 如果 matcher.run 抛错，则会走到 catch；注意不要漏掉上层的 reject
+			const result = await matcher.run(value);
+			return result;
+		})();
+
+		// 为了并发安全：包一层 catch，出错时把缓存清理掉
+		const wrappedPromise = rawPromise.catch((err) => {
+			// 清理对应的缓存项
+			if (isObject) {
+				weakCache.delete(value as object);
+			} else {
+				options.useLRU
+					? (cache as Map<Input, Promise<Output>>).delete(value)
+					: (cache as MiniLRUCache<Input, Promise<Output>>).remove(value);
+			}
+			// 然后把错误继续往外抛
+			return Promise.reject(err);
+		});
+
+		// 放入缓存
+		if (isObject) {
+			weakCache.set(value as object, wrappedPromise);
+		} else {
+			if (options.useLRU) {
+				(cache as Map<Input, Promise<Output>>).set(value, wrappedPromise);
+			} else {
+				(cache as MiniLRUCache<Input, Promise<Output>>).set(
+					value,
+					wrappedPromise
+				);
+			}
+		}
+
+		// 最终返回这个 Promise
+		return wrappedPromise;
 	};
 
 	return fn;
