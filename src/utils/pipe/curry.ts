@@ -16,6 +16,9 @@ type DropPlaceholders<
 
 type Length<T extends any[]> = T["length"];
 
+// Promise decode & encode
+type PromiseDE<T, U> = T extends Promise<unknown> ? Promise<U> : U;
+
 type CurriedFunction<Args extends any[], R> = <
 	OtherReturn = R,
 	T extends any[] = Args
@@ -26,30 +29,20 @@ type CurriedFunction<Args extends any[], R> = <
 		? Length<RestArgs> extends 0
 			? R extends OtherReturn
 				? R
-				: OtherReturn
+				: PromiseDE<R, OtherReturn>
 			: CurriedFunction<RestArgs, R>
 		: never
 	: never;
 
 type CurriedVariadic<TArgs extends any[], R> = {
-	<
-		_OtherReturn = R,
-		OtherReturn = R extends Promise<unknown>
-			? Promise<_OtherReturn>
-			: _OtherReturn
-	>(
+	<_OtherReturn = R, OtherReturn = PromiseDE<R, _OtherReturn>>(
 		...args: TArgs
 	): CurriedVariadic<TArgs, OtherReturn>;
 	exec: () => R;
 };
 
 type CurriedWithDefault<Args extends any[], R> = {
-	<
-		_OtherReturn = R,
-		OtherReturn = R extends Promise<unknown>
-			? Promise<_OtherReturn>
-			: _OtherReturn
-	>(
+	<_OtherReturn = R, OtherReturn = PromiseDE<R, _OtherReturn>>(
 		...args: any[]
 	): CurriedWithDefault<Args, OtherReturn>;
 	exec: () => R;
