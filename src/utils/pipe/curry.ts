@@ -14,15 +14,46 @@ type DropPlaceholders<
 		: Args
 	: [];
 
-type CurriedFunction<Args extends any[], R> = <T extends any[]>(
+type Length<T extends any[]> = T["length"];
+
+type CurriedFunction<Args extends any[], R> = <
+	OtherReturn = R,
+	T extends any[] = Args
+>(
 	...args: T
 ) => DropPlaceholders<Args, T> extends infer RestArgs
 	? RestArgs extends any[]
-		? RestArgs["length"] extends 0
-			? R
+		? Length<RestArgs> extends 0
+			? R extends OtherReturn
+				? R
+				: OtherReturn
 			: CurriedFunction<RestArgs, R>
 		: never
 	: never;
+
+type CurriedVariadic<TArgs extends any[], R> = {
+	<
+		_OtherReturn = R,
+		OtherReturn = R extends Promise<unknown>
+			? Promise<_OtherReturn>
+			: _OtherReturn
+	>(
+		...args: TArgs
+	): CurriedVariadic<TArgs, OtherReturn>;
+	exec: () => R;
+};
+
+type CurriedWithDefault<Args extends any[], R> = {
+	<
+		_OtherReturn = R,
+		OtherReturn = R extends Promise<unknown>
+			? Promise<_OtherReturn>
+			: _OtherReturn
+	>(
+		...args: any[]
+	): CurriedWithDefault<Args, OtherReturn>;
+	exec: () => R;
+};
 
 function mergeArgs(prev: any[], next: any[]): any[] {
 	const result: any[] = [];
@@ -75,11 +106,6 @@ export function curry<F extends (...args: any[]) => any>(
 	return curried([]);
 }
 
-type CurriedVariadic<TArgs extends any[], R> = {
-	(...args: TArgs): CurriedVariadic<TArgs, R>;
-	exec: () => R;
-};
-
 /**
  * Curry for variadic functions (e.g., with optional/rest parameters).
  * New scope per call, requires `.exec()`.
@@ -99,12 +125,6 @@ export function curryVariadic<TArgs extends any[], R>(
 
 	return build([] as unknown as TArgs);
 }
-
-type CurriedWithDefault<Args extends any[], R> = {
-	(...args: any[]): CurriedWithDefault<Args, R>;
-	exec: () => R;
-};
-
 function mergeArgsWithDefault(
 	oldArgs: any[],
 	newArgs: any[],
