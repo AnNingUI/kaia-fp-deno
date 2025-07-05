@@ -39,7 +39,7 @@ export class Options<A> implements HKT<"Options", A> {
 		}
 	}
 
-	public flatMap<B>(f: (a: A) => Options<B>) {
+	public flatMap<B>(f: (a: A) => Options<B>): Options<B> {
 		if (this.isSome()) {
 			return f(this.value!);
 		} else {
