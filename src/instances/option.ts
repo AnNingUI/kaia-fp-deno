@@ -38,6 +38,14 @@ export class Options<A> implements HKT<"Options", A> {
 			return none?.();
 		}
 	}
+
+	public flatMap<B>(f: (a: A) => Options<B>) {
+		if (this.isSome()) {
+			return f(this.value!);
+		} else {
+			return None.of() as Options<B>;
+		}
+	}
 }
 
 export class Some<A> extends Options<A> implements HKT<"Options", A> {
