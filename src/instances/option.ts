@@ -31,7 +31,13 @@ export class Options<A> implements HKT<"Options", A> {
 		return this.isSome() ? (this.value as A) : defaultValue;
 	}
 
-	public match<B>({ some, none }: { some: (value: A) => B; none: () => B }): B {
+	public match<B>({
+		some,
+		none,
+	}: {
+		some: (value: NonNullable<A>) => B;
+		none: () => B;
+	}): B {
 		if (this.isSome()) {
 			return some?.(this.value!);
 		} else {
@@ -39,7 +45,7 @@ export class Options<A> implements HKT<"Options", A> {
 		}
 	}
 
-	public flatMap<B>(f: (a: A) => Options<B>): Options<B> {
+	public flatMap<B>(f: (a: NonNullable<A>) => Options<B>) {
 		if (this.isSome()) {
 			return f(this.value!);
 		} else {
@@ -84,11 +90,15 @@ export const OptionMonad: {
 	none: () => None;
 } & Monad<"Options"> = {
 	none: () => None.of(),
-	of: <A>(a: A): Options<A> => new Some(a),
+	of: <A>(a: A): Options<A> => (isNoNull(a) ? new Some(a) : None.of()),
 	map: (fa, f) => (fa instanceof Some ? new Some(f(fa.value)) : None.of()),
 	ap: (fab, fa) =>
 		fab instanceof Some && fa instanceof Some
 			? new Some(fab.value(fa.value))
 			: None.of(),
 	flatMap: (fa, f) => (fa instanceof Some ? f(fa.value) : None.of()),
+};
+
+const isNoNull = <T>(value: T) => {
+	return !(value === null || value === undefined);
 };
