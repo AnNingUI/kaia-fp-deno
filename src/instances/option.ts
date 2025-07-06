@@ -45,7 +45,7 @@ export class Options<A> implements HKT<"Options", A> {
 		}
 	}
 
-	public flatMap<B>(f: (a: NonNullable<A>) => Options<B>) {
+	public flatMap<B>(f: (a: NonNullable<A>) => Options<B>): Options<B> {
 		if (this.isSome()) {
 			return f(this.value!);
 		} else {
